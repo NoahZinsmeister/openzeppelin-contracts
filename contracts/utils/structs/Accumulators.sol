@@ -4,60 +4,66 @@ pragma solidity ^0.8.0;
 import "../Timers.sol";
 
 library Accumulators {
-    using Timers for Timers.Timestamp;
+    using Timers for Timers.BlockNumber;
 
-    struct TimestampAccumulator {
-        uint64 timestamp;
+    struct BlockNumberAccumulator {
+        uint64 blockNumber;
         uint192 sum;
     }
 
-    function initialize(Timers.Timestamp memory timestamp, uint128 value)
+    function initialize(Timers.BlockNumber memory blockNumber, uint128 value)
         internal
         pure
-        returns (TimestampAccumulator memory)
+        returns (BlockNumberAccumulator memory)
     {
-        return TimestampAccumulator({
-            timestamp: timestamp.getDeadline(),
+        return BlockNumberAccumulator({
+            blockNumber: blockNumber.getDeadline(),
             sum: value
         });
     }
 
-    function initialize(uint128 value) internal view returns (TimestampAccumulator memory) {
-        return initialize(Timers.Timestamp({ _deadline: uint64(block.timestamp) }), value);
+    function initialize(uint128 value) internal view returns (BlockNumberAccumulator memory) {
+        return initialize(Timers.BlockNumber({ _deadline: uint64(block.number) }), value);
     }
 
-    function increment(TimestampAccumulator storage accumulator, Timers.Timestamp memory timestamp, uint128 value)
+    function increment(BlockNumberAccumulator memory accumulator, Timers.BlockNumber memory blockNumber, uint128 value)
         internal
+        pure
+        returns (BlockNumberAccumulator memory)
     {
-        require(timestamp.getDeadline() > accumulator.timestamp, "Accumulators: no time passed");
+        require(blockNumber.getDeadline() > accumulator.blockNumber, "Accumulators: no blocks passed");
         uint192 incrementalSum;
         // neither underflow nor overflow are possible, so save some gas by doing unchecked arithmetic
         unchecked {
-            uint64 timeElapsed = timestamp.getDeadline() - accumulator.timestamp;
+            uint64 timeElapsed = blockNumber.getDeadline() - accumulator.blockNumber;
             incrementalSum = uint192(value) * timeElapsed;
         }
-        accumulator.timestamp = timestamp.getDeadline();
         // the addition below never overflows with correct use, but uses safe math to ward off misuse
-        accumulator.sum += incrementalSum;
+        return BlockNumberAccumulator({
+            blockNumber: blockNumber.getDeadline(),
+            sum: accumulator.sum + incrementalSum
+        });
     }
 
-    function increment(TimestampAccumulator storage accumulator, uint128 value)
+    function increment(BlockNumberAccumulator memory accumulator, uint128 value)
         internal
+        view
+        returns (BlockNumberAccumulator memory)
     {
-        increment(accumulator, Timers.Timestamp({_deadline: uint64(block.timestamp)}), value);
+        return increment(accumulator, Timers.BlockNumber({_deadline: uint64(block.number)}), value);
     }
 
-    function getArithmeticMean(TimestampAccumulator memory a, TimestampAccumulator memory b)
+    function getArithmeticMean(BlockNumberAccumulator memory a, BlockNumberAccumulator memory b)
         internal pure returns (uint128)
     {
-        // ensure that accumulators are sorted in ascending order by timestamp
-        if (a.timestamp > b.timestamp) {
+        // ensure that accumulators are sorted in ascending order by block number
+        if (a.blockNumber > b.blockNumber) {
             (a, b) = (b, a);
         }
         // the first subtraction below never underflows with correct use, but uses safe math to ward off misuse
         // the second subtraction below never underflows because of the sorting logic above
-        // the division fails iff the timestamps of a and b are equal, which indicates misuse
+        // the division fails iff the block numbers of a and b are equal, which indicates misuse
         // the cast cannot truncate
-        return uint128((b.sum - a.sum) / (b.timestamp - a.timestamp));
+        return uint128((b.sum - a.sum) / (b.blockNumber - a.blockNumber));
     }
 }

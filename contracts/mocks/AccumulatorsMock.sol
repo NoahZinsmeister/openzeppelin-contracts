@@ -6,23 +6,23 @@ import "../utils/structs/Accumulators.sol";
 import "../utils/Timers.sol";
 
 contract AccumulatorsMock {
-    using Accumulators for Accumulators.TimestampAccumulator;
+    using Accumulators for Accumulators.BlockNumberAccumulator;
 
-    Accumulators.TimestampAccumulator public timestampAccumulator;
+    Accumulators.BlockNumberAccumulator public blockNumberAccumulator;
 
     function prepareForFailingTestUNSAFE() external {
-        timestampAccumulator.sum = type(uint192).max;
+        blockNumberAccumulator.sum = type(uint192).max;
     }
 
-    function initialize(uint64 timestamp, uint128 value) external {
-        timestampAccumulator = Accumulators.initialize(Timers.Timestamp({ _deadline: timestamp }), value);
+    function initialize(uint64 blockNumber, uint128 value) external {
+        blockNumberAccumulator = Accumulators.initialize(Timers.BlockNumber({ _deadline: blockNumber }), value);
     }
 
-    function increment(uint64 timestamp, uint128 value) external {
-        timestampAccumulator.increment(Timers.Timestamp({ _deadline: timestamp }), value);
+    function increment(uint64 blockNumber, uint128 value) external {
+        blockNumberAccumulator = blockNumberAccumulator.increment(Timers.BlockNumber({ _deadline: blockNumber }), value);
     }
 
-    function getArithmeticMean(Accumulators.TimestampAccumulator calldata a) external view returns (uint128) {
-        return timestampAccumulator.getArithmeticMean(a);
+    function getArithmeticMean(Accumulators.BlockNumberAccumulator calldata a) external view returns (uint128) {
+        return blockNumberAccumulator.getArithmeticMean(a);
     }
 }
