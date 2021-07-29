@@ -35,8 +35,8 @@ library Accumulators {
         uint192 incrementalSum;
         // neither underflow nor overflow are possible, so save some gas by doing unchecked arithmetic
         unchecked {
-            uint64 timeElapsed = blockNumber.getDeadline() - accumulator.blockNumber;
-            incrementalSum = uint192(value) * timeElapsed;
+            uint64 blocksElapsed = blockNumber.getDeadline() - accumulator.blockNumber;
+            incrementalSum = uint192(value) * blocksElapsed;
         }
         // the addition below never overflows with correct use, but uses safe math to ward off misuse
         return BlockNumberAccumulator({

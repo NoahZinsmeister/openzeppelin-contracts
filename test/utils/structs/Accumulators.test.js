@@ -54,7 +54,7 @@ contract('Accumulators', function (accounts) {
       await expectRevert.unspecified(this.accumulators.getArithmeticMean({ blockNumber: 2, sum: 0 }));
     });
 
-    it('fails when no blcoks have elapsed', async function () {
+    it('fails when no blocks have elapsed', async function () {
       await expectRevert.unspecified(this.accumulators.getArithmeticMean({ blockNumber: 0, sum: 11 }));
     });
 
