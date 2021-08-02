@@ -14,8 +14,8 @@ contract AccumulatorsMock {
         blockNumberAccumulator.sum = type(uint192).max;
     }
 
-    function initialize(uint64 blockNumber, uint128 value) external {
-        blockNumberAccumulator = Accumulators.initialize(Timers.BlockNumber({ _deadline: blockNumber }), value);
+    function initialize(uint64 blockNumber) external {
+        blockNumberAccumulator = Accumulators.initialize(Timers.BlockNumber({ _deadline: blockNumber }));
     }
 
     function increment(uint64 blockNumber, uint128 value) external {

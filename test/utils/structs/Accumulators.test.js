@@ -16,10 +16,10 @@ contract('Accumulators', function (accounts) {
 
   describe('initialize', function () {
     it('works', async function () {
-      await this.accumulators.initialize(1, 2);
+      await this.accumulators.initialize(1);
       const blockNumberAccumulator = await this.accumulators.blockNumberAccumulator();
       expect(blockNumberAccumulator.blockNumber).to.be.bignumber.equal('1');
-      expect(blockNumberAccumulator.sum).to.be.bignumber.equal('2');
+      expect(blockNumberAccumulator.sum).to.be.bignumber.equal('0');
     });
   });
 
@@ -50,7 +50,8 @@ contract('Accumulators', function (accounts) {
 
   describe('getArithmeticMean', function () {
     it('fails when misused', async function () {
-      await this.accumulators.initialize(1, 1);
+      await this.accumulators.initialize(0);
+      await this.accumulators.increment(1, 1);
       await expectRevert.unspecified(this.accumulators.getArithmeticMean({ blockNumber: 2, sum: 0 }));
     });
 
@@ -71,7 +72,8 @@ contract('Accumulators', function (accounts) {
     });
 
     it('works in reverse', async function () {
-      await this.accumulators.initialize(1, 11);
+      await this.accumulators.initialize(0);
+      await this.accumulators.increment(1, 11);
       expect(await this.accumulators.getArithmeticMean({ blockNumber: 0, sum: 0 })).to.be.bignumber.equal('11');
     });
   });

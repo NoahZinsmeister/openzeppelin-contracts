@@ -11,19 +11,19 @@ library Accumulators {
         uint192 sum;
     }
 
-    function initialize(Timers.BlockNumber memory blockNumber, uint128 value)
+    function initialize(Timers.BlockNumber memory blockNumber)
         internal
         pure
         returns (BlockNumberAccumulator memory)
     {
         return BlockNumberAccumulator({
             blockNumber: blockNumber.getDeadline(),
-            sum: value
+            sum: 0
         });
     }
 
-    function initialize(uint128 value) internal view returns (BlockNumberAccumulator memory) {
-        return initialize(Timers.BlockNumber({ _deadline: uint64(block.number) }), value);
+    function initialize() internal view returns (BlockNumberAccumulator memory) {
+        return initialize(Timers.BlockNumber({ _deadline: uint64(block.number) }));
     }
 
     function increment(BlockNumberAccumulator memory accumulator, Timers.BlockNumber memory blockNumber, uint128 value)
