@@ -26,9 +26,9 @@ library Accumulators {
         return initialize(Timers.BlockNumber({ _deadline: uint64(block.number) }));
     }
 
-    function increment(BlockNumberAccumulator memory accumulator, Timers.BlockNumber memory blockNumber, uint128 value)
+    function increment(BlockNumberAccumulator storage accumulator, Timers.BlockNumber memory blockNumber, uint128 value)
         internal
-        pure
+        view
         returns (BlockNumberAccumulator memory)
     {
         require(blockNumber.getDeadline() > accumulator.blockNumber, "Accumulators: no blocks passed");
@@ -45,7 +45,7 @@ library Accumulators {
         });
     }
 
-    function increment(BlockNumberAccumulator memory accumulator, uint128 value)
+    function increment(BlockNumberAccumulator storage accumulator, uint128 value)
         internal
         view
         returns (BlockNumberAccumulator memory)
