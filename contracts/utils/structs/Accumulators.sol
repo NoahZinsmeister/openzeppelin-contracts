@@ -6,6 +6,7 @@ import "../Timers.sol";
 library Accumulators {
     using Timers for Timers.BlockNumber;
 
+    // 1 storage slot
     struct BlockNumberAccumulator {
         uint64 blockNumber;
         uint192 sum;
@@ -22,6 +23,7 @@ library Accumulators {
         });
     }
 
+    // uses the current block.number
     function initialize() internal view returns (BlockNumberAccumulator memory) {
         return initialize(Timers.BlockNumber({ _deadline: uint64(block.number) }));
     }
@@ -38,13 +40,14 @@ library Accumulators {
             uint64 blocksElapsed = blockNumber.getDeadline() - accumulator.blockNumber;
             incrementalSum = uint192(value) * blocksElapsed;
         }
-        // the addition below never overflows with correct use, but uses safe math to ward off misuse
+        // the addition below never overflows with correct use, but we still use safe math to ward off misuse
         return BlockNumberAccumulator({
             blockNumber: blockNumber.getDeadline(),
             sum: accumulator.sum + incrementalSum
         });
     }
 
+    // uses the current block.number
     function increment(BlockNumberAccumulator storage accumulator, uint128 value)
         internal
         view
@@ -54,7 +57,9 @@ library Accumulators {
     }
 
     function getArithmeticMean(BlockNumberAccumulator memory a, BlockNumberAccumulator memory b)
-        internal pure returns (uint128)
+        internal
+        pure
+        returns (uint128)
     {
         // ensure that accumulators are sorted in ascending order by block number
         if (a.blockNumber > b.blockNumber) {

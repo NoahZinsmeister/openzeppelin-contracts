@@ -50,7 +50,6 @@ contract('Accumulators', function (accounts) {
 
   describe('getArithmeticMean', function () {
     it('fails when misused', async function () {
-      await this.accumulators.initialize(0);
       await this.accumulators.increment(1, 1);
       await expectRevert.unspecified(this.accumulators.getArithmeticMean({ blockNumber: 2, sum: 0 }));
     });
