@@ -3,6 +3,7 @@
 pragma solidity ^0.8.0;
 
 import "./draft-ERC20Permit.sol";
+import "../../../utils/structs/Accumulators.sol";
 import "../../../utils/math/Math.sol";
 import "../../../utils/math/SafeCast.sol";
 import "../../../utils/cryptography/ECDSA.sol";
@@ -25,17 +26,19 @@ import "../../../utils/cryptography/ECDSA.sol";
  * _Available since v4.2._
  */
 abstract contract ERC20Votes is ERC20Permit {
-    struct Checkpoint {
-        uint32 fromBlock;
-        uint224 votes;
-    }
+    using Accumulators for Accumulators.BlockNumberAccumulator;
 
     bytes32 private constant _DELEGATION_TYPEHASH =
         keccak256("Delegation(address delegatee,uint256 nonce,uint256 expiry)");
 
-    mapping(address => address) private _delegates;
-    mapping(address => Checkpoint[]) private _checkpoints;
-    Checkpoint[] private _totalSupplyCheckpoints;
+    struct VoterInformation {
+        uint96 votes;
+        address delegate;
+        Accumulators.BlockNumberAccumulator[] checkpoints;
+    }
+
+    mapping(address => VoterInformation) private _voterInformation;
+    Accumulators.BlockNumberAccumulator[] private _totalSupplyCheckpoints;
 
     /**
      * @dev Emitted when an account changes their delegate.
@@ -50,30 +53,34 @@ abstract contract ERC20Votes is ERC20Permit {
     /**
      * @dev Get the `pos`-th checkpoint for `account`.
      */
-    function checkpoints(address account, uint32 pos) public view virtual returns (Checkpoint memory) {
-        return _checkpoints[account][pos];
+    function checkpoints(address account, uint32 pos)
+        public
+        view
+        virtual
+        returns (Accumulators.BlockNumberAccumulator memory)
+    {
+        return _voterInformation[account].checkpoints[pos];
     }
 
     /**
      * @dev Get number of checkpoints for `account`.
      */
     function numCheckpoints(address account) public view virtual returns (uint32) {
-        return SafeCast.toUint32(_checkpoints[account].length);
+        return SafeCast.toUint32(_voterInformation[account].checkpoints.length);
     }
 
     /**
      * @dev Get the address `account` is currently delegating to.
      */
     function delegates(address account) public view virtual returns (address) {
-        return _delegates[account];
+        return _voterInformation[account].delegate;
     }
 
     /**
      * @dev Gets the current votes balance for `account`
      */
     function getVotes(address account) public view returns (uint256) {
-        uint256 pos = _checkpoints[account].length;
-        return pos == 0 ? 0 : _checkpoints[account][pos - 1].votes;
+        return _voterInformation[account].votes;
     }
 
     /**
@@ -85,7 +92,8 @@ abstract contract ERC20Votes is ERC20Permit {
      */
     function getPastVotes(address account, uint256 blockNumber) public view returns (uint256) {
         require(blockNumber < block.number, "ERC20Votes: block not yet mined");
-        return _checkpointsLookup(_checkpoints[account], blockNumber);
+        VoterInformation storage voterInformation = _voterInformation[account];
+        return _checkpointsLookup(voterInformation.checkpoints, voterInformation.votes, blockNumber);
     }
 
     /**
@@ -98,13 +106,21 @@ abstract contract ERC20Votes is ERC20Permit {
      */
     function getPastTotalSupply(uint256 blockNumber) public view returns (uint256) {
         require(blockNumber < block.number, "ERC20Votes: block not yet mined");
-        return _checkpointsLookup(_totalSupplyCheckpoints, blockNumber);
+        return _checkpointsLookup(_totalSupplyCheckpoints, totalSupply(), blockNumber);
     }
 
     /**
      * @dev Lookup a value in a list of (sorted) checkpoints.
      */
-    function _checkpointsLookup(Checkpoint[] storage ckpts, uint256 blockNumber) private view returns (uint256) {
+    function _checkpointsLookup(
+        Accumulators.BlockNumberAccumulator[] storage ckpts,
+        uint256 value,
+        uint256 blockNumber
+    )
+        private
+        view
+        returns (uint256)
+    {
         // We run a binary search to look for the earliest checkpoint taken after `blockNumber`.
         //
         // During the loop, the index of the wanted checkpoint remains in the range [low-1, high).
@@ -120,14 +136,26 @@ abstract contract ERC20Votes is ERC20Permit {
         uint256 low = 0;
         while (low < high) {
             uint256 mid = Math.average(low, high);
-            if (ckpts[mid].fromBlock > blockNumber) {
+            if (ckpts[mid].blockNumber > blockNumber) {
                 high = mid;
             } else {
                 low = mid + 1;
             }
         }
 
-        return high == 0 ? 0 : ckpts[high - 1].votes;
+        // TODO don't think the below is actually correct, but shows the idea on a high level
+        if (high == 0) {
+            // too far in the past
+            return 0;
+        } else if (high == ckpts.length) {
+            // present value
+            return value;
+        } else {
+            // historical value
+            Accumulators.BlockNumberAccumulator memory a = ckpts[high - 2];
+            Accumulators.BlockNumberAccumulator memory b = ckpts[high - 1];
+            return a.getArithmeticMean(b);
+        }
     }
 
     /**
@@ -163,26 +191,28 @@ abstract contract ERC20Votes is ERC20Permit {
      * @dev Maximum token supply. Defaults to `type(uint224).max` (2^224^ - 1).
      */
     function _maxSupply() internal view virtual returns (uint224) {
-        return type(uint224).max;
+        return type(uint96).max;
     }
 
     /**
      * @dev Snapshots the totalSupply after it has been increased.
      */
     function _mint(address account, uint256 amount) internal virtual override {
+        uint256 totalSupplyBefore = totalSupply();
         super._mint(account, amount);
         require(totalSupply() <= _maxSupply(), "ERC20Votes: total supply risks overflowing votes");
 
-        _writeCheckpoint(_totalSupplyCheckpoints, _add, amount);
+        _writeCheckpoint(_totalSupplyCheckpoints, totalSupplyBefore, _add, amount);
     }
 
     /**
      * @dev Snapshots the totalSupply after it has been decreased.
      */
     function _burn(address account, uint256 amount) internal virtual override {
+        uint256 totalSupplyBefore = totalSupply();
         super._burn(account, amount);
 
-        _writeCheckpoint(_totalSupplyCheckpoints, _subtract, amount);
+        _writeCheckpoint(_totalSupplyCheckpoints, totalSupplyBefore, _subtract, amount);
     }
 
     /**
@@ -208,7 +238,7 @@ abstract contract ERC20Votes is ERC20Permit {
     function _delegate(address delegator, address delegatee) internal virtual {
         address currentDelegate = delegates(delegator);
         uint256 delegatorBalance = balanceOf(delegator);
-        _delegates[delegator] = delegatee;
+        _voterInformation[delegator].delegate = delegatee;
 
         emit DelegateChanged(delegator, currentDelegate, delegatee);
 
@@ -222,30 +252,42 @@ abstract contract ERC20Votes is ERC20Permit {
     ) private {
         if (src != dst && amount > 0) {
             if (src != address(0)) {
-                (uint256 oldWeight, uint256 newWeight) = _writeCheckpoint(_checkpoints[src], _subtract, amount);
+                (uint256 oldWeight, uint256 newWeight) = _writeCheckpoint(
+                    _voterInformation[src].checkpoints,
+                    _voterInformation[src].votes,
+                    _subtract,
+                    amount
+                );
                 emit DelegateVotesChanged(src, oldWeight, newWeight);
             }
 
             if (dst != address(0)) {
-                (uint256 oldWeight, uint256 newWeight) = _writeCheckpoint(_checkpoints[dst], _add, amount);
+                (uint256 oldWeight, uint256 newWeight) = _writeCheckpoint(
+                    _voterInformation[dst].checkpoints,
+                    _voterInformation[dst].votes,
+                    _add,
+                    amount
+                );
                 emit DelegateVotesChanged(dst, oldWeight, newWeight);
             }
         }
     }
 
     function _writeCheckpoint(
-        Checkpoint[] storage ckpts,
+        Accumulators.BlockNumberAccumulator[] storage ckpts,
+        uint256 value,
         function(uint256, uint256) view returns (uint256) op,
         uint256 delta
     ) private returns (uint256 oldWeight, uint256 newWeight) {
         uint256 pos = ckpts.length;
-        oldWeight = pos == 0 ? 0 : ckpts[pos - 1].votes;
+        oldWeight = value;
         newWeight = op(oldWeight, delta);
-
-        if (pos > 0 && ckpts[pos - 1].fromBlock == block.number) {
-            ckpts[pos - 1].votes = SafeCast.toUint224(newWeight);
-        } else {
-            ckpts.push(Checkpoint({fromBlock: SafeCast.toUint32(block.number), votes: SafeCast.toUint224(newWeight)}));
+        
+        // TODO this also needs some work
+        if (pos == 0) {
+            ckpts.push(Accumulators.initialize());
+        } else if (ckpts[pos - 1].blockNumber != block.number) {
+            ckpts.push(ckpts[pos - 1].increment(uint128(newWeight)));
         }
     }
 
